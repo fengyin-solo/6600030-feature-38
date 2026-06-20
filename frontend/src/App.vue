@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { computed, onMounted } from 'vue';
 import FEACanvas from './components/FEACanvas.vue';
 import ElementInfo from './components/ElementInfo.vue';
 import MeshControls from './components/MeshControls.vue';
@@ -9,6 +9,30 @@ const store = useFEAStore();
 
 onMounted(() => {
   store.loadPreset('cantilever');
+});
+
+const toastClass = computed(() => {
+  switch (store.notification?.type) {
+    case 'success':
+      return 'border-green-500/50 bg-green-900/90 text-green-100';
+    case 'error':
+      return 'border-red-500/50 bg-red-900/90 text-red-100';
+    case 'info':
+    default:
+      return 'border-sky-500/50 bg-sky-900/90 text-sky-100';
+  }
+});
+
+const toastIcon = computed(() => {
+  switch (store.notification?.type) {
+    case 'success':
+      return '✓';
+    case 'error':
+      return '✕';
+    case 'info':
+    default:
+      return 'ℹ';
+  }
 });
 </script>
 
@@ -63,5 +87,38 @@ onMounted(() => {
         热力图: {{ store.heatmapMode }}
       </span>
     </footer>
+
+    <!-- Solve feedback toast -->
+    <Transition name="toast">
+      <div
+        v-if="store.notification"
+        class="fixed top-4 right-4 z-50 max-w-sm px-4 py-3 rounded-lg border shadow-lg backdrop-blur text-xs font-medium flex items-center gap-3"
+        :class="toastClass"
+      >
+        <span
+          class="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold"
+          :class="{
+            'bg-green-500/30 text-green-300': store.notification.type === 'success',
+            'bg-red-500/30 text-red-300': store.notification.type === 'error',
+            'bg-sky-500/30 text-sky-300': store.notification.type === 'info',
+          }"
+        >
+          {{ toastIcon }}
+        </span>
+        <span class="flex-1">{{ store.notification.message }}</span>
+      </div>
+    </Transition>
   </div>
 </template>
+
+<style scoped>
+.toast-enter-active,
+.toast-leave-active {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translateX(16px);
+}
+</style>

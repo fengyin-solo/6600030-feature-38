@@ -11,6 +11,20 @@ let scale = 1;
 let isDragging = false;
 let lastMouse = { x: 0, y: 0 };
 
+const stageText: Record<string, string> = {
+  assembling: '组装刚度矩阵',
+  solving: '求解有限元方程',
+  processing: '后处理计算结果',
+  done: '求解完成',
+};
+
+const stageIcon: Record<string, string> = {
+  assembling: '📐',
+  solving: '⚙️',
+  processing: '📊',
+  done: '✅',
+};
+
 function worldToScreen(x: number, y: number): [number, number] {
   return [x * scale + offsetX, y * scale + offsetY];
 }
@@ -39,7 +53,6 @@ function draw() {
     return;
   }
 
-  // Auto-scale to fit
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (const n of nodes) {
     minX = Math.min(minX, n.x);
@@ -52,7 +65,6 @@ function draw() {
   const margin = 60;
   const fitScale = Math.min((W - margin * 2) / worldW, (H - margin * 2) / worldH);
 
-  // Use auto scale only if no manual zoom
   const drawScale = fitScale * scale;
   const drawOffsetX = margin - minX * drawScale + (W - margin * 2 - worldW * drawScale) / 2;
   const drawOffsetY = margin - minY * drawScale + (H - margin * 2 - worldH * drawScale) / 2;
@@ -61,7 +73,6 @@ function draw() {
     return [x * drawScale + drawOffsetX, y * drawScale + drawOffsetY];
   }
 
-  // Draw elements with heatmap colors
   for (const el of elements) {
     const n1 = nodes.find((n) => n.id === el.nodeIds[0]);
     const n2 = nodes.find((n) => n.id === el.nodeIds[1]);
@@ -91,7 +102,6 @@ function draw() {
     }
   }
 
-  // Draw deformed mesh
   if (store.showDeformed && store.result) {
     ctx.setLineDash([5, 3]);
     for (const el of elements) {
@@ -113,12 +123,10 @@ function draw() {
     ctx.setLineDash([]);
   }
 
-  // Draw nodes
   for (const node of nodes) {
     const [x, y] = toScreen(node.x, node.y);
 
     if (node.fixed) {
-      // Draw triangle for fixed nodes
       ctx.beginPath();
       ctx.moveTo(x, y - 8);
       ctx.lineTo(x - 6, y + 4);
@@ -130,7 +138,6 @@ function draw() {
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
-      // Hatching below
       ctx.strokeStyle = '#f97316';
       ctx.lineWidth = 1;
       for (let i = -8; i <= 8; i += 4) {
@@ -150,7 +157,6 @@ function draw() {
     }
   }
 
-  // Draw load arrows
   for (const load of loads) {
     const node = nodes.find((n) => n.id === load.nodeId);
     if (!node) continue;
@@ -163,7 +169,6 @@ function draw() {
     const dx = (load.fx / mag) * arrowLen;
     const dy = (load.fy / mag) * arrowLen;
 
-    // Arrow line
     ctx.beginPath();
     ctx.moveTo(x - dx, y - dy);
     ctx.lineTo(x, y);
@@ -171,7 +176,6 @@ function draw() {
     ctx.lineWidth = 2.5;
     ctx.stroke();
 
-    // Arrow head
     const headLen = 8;
     const angle = Math.atan2(dy, dx);
     ctx.beginPath();
@@ -183,14 +187,12 @@ function draw() {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Label
     ctx.fillStyle = '#fca5a5';
     ctx.font = '10px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(`${(mag / 1000).toFixed(1)}kN`, x - dx / 2, y - dy / 2 - 6);
   }
 
-  // Draw color legend bar
   const legendX = W - 40;
   const legendY = 30;
   const legendH = H - 60;
@@ -209,12 +211,11 @@ function draw() {
   ctx.lineWidth = 1;
   ctx.strokeRect(legendX, legendY, legendW, legendH);
 
-  // Legend labels
   ctx.fillStyle = '#94a3b8';
   ctx.font = '10px sans-serif';
   ctx.textAlign = 'left';
 
-  let maxVal = 0, minVal = 0;
+  let maxVal = 0;
   if (store.result) {
     switch (store.heatmapMode) {
       case 'stress':
@@ -236,7 +237,6 @@ function draw() {
   ctx.fillText(`${maxVal.toExponential(1)} ${unit}`, legendX - 4, legendY + 8);
   ctx.fillText('0', legendX - 4, legendY + legendH);
 
-  // Mode label
   ctx.save();
   ctx.translate(legendX + legendW + 10, legendY + legendH / 2);
   ctx.rotate(-Math.PI / 2);
@@ -295,7 +295,6 @@ function handleClick(e: MouseEvent) {
   const drawOffsetX = margin - minX * drawScale + (W - margin * 2 - worldW * drawScale) / 2;
   const drawOffsetY = margin - minY * drawScale + (H - margin * 2 - worldH * drawScale) / 2;
 
-  // Find nearest element
   let bestDist = 15;
   let bestId: number | null = null;
 
@@ -309,7 +308,6 @@ function handleClick(e: MouseEvent) {
     const x2 = n2.x * drawScale + drawOffsetX;
     const y2 = n2.y * drawScale + drawOffsetY;
 
-    // Point-to-segment distance
     const dx = x2 - x1;
     const dy = y2 - y1;
     const len2 = dx * dx + dy * dy;
@@ -350,16 +348,92 @@ watch(
 </script>
 
 <template>
-  <canvas
-    ref="canvas"
-    width="800"
-    height="500"
-    class="w-full rounded-lg border border-slate-700 cursor-crosshair"
-    @mousedown="handleMouseDown"
-    @mousemove="handleMouseMove"
-    @mouseup="handleMouseUp"
-    @mouseleave="handleMouseUp"
-    @wheel="handleWheel"
-    @click="handleClick"
-  />
+  <div class="relative">
+    <canvas
+      ref="canvas"
+      width="800"
+      height="500"
+      class="w-full rounded-lg border border-slate-700 cursor-crosshair transition-opacity duration-200"
+      :class="{ 'opacity-40 pointer-events-none': store.isSolving }"
+      @mousedown="handleMouseDown"
+      @mousemove="handleMouseMove"
+      @mouseup="handleMouseUp"
+      @mouseleave="handleMouseUp"
+      @wheel="handleWheel"
+      @click="handleClick"
+    ></canvas>
+
+    <Transition name="fade">
+      <div
+        v-if="store.isSolving"
+        class="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/70 backdrop-blur-sm rounded-lg"
+      >
+        <div class="flex flex-col items-center gap-4 p-6">
+          <div class="relative">
+            <div class="w-16 h-16 border-4 border-slate-700 border-t-sky-500 rounded-full animate-spin"></div>
+            <div class="absolute inset-0 flex items-center justify-center text-2xl">
+              {{ stageIcon[store.solveStage] || '⚙️' }}
+            </div>
+          </div>
+
+          <div class="text-center">
+            <div class="text-lg font-bold text-slate-100">
+              {{ stageText[store.solveStage] || '正在求解...' }}
+            </div>
+            <div class="text-sm text-slate-400 mt-1">
+              {{ store.notification?.message || '请稍候...' }}
+            </div>
+          </div>
+
+          <div class="w-64">
+            <div class="h-2 bg-slate-800 rounded-full overflow-hidden">
+              <div
+                class="h-full bg-gradient-to-r from-sky-500 to-purple-500 transition-all duration-300 ease-out"
+                :style="{ width: `${store.solveProgress}%` }"
+              ></div>
+            </div>
+            <div class="text-xs text-slate-500 text-center mt-2 font-mono">
+              {{ store.solveProgress }}%
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <Transition name="pulse">
+      <div
+        v-if="store.solveStage === 'done'"
+        class="absolute inset-0 pointer-events-none rounded-lg border-4 border-green-500/60"
+      ></div>
+    </Transition>
+  </div>
 </template>
+
+<style scoped>
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.pulse-enter-active {
+  animation: pulse-border 0.6s ease-out;
+}
+@keyframes pulse-border {
+  0% {
+    border-color: rgba(34, 197, 94, 0.8);
+    border-width: 4px;
+  }
+  50% {
+    border-color: rgba(34, 197, 94, 0.3);
+    border-width: 6px;
+  }
+  100% {
+    border-color: rgba(34, 197, 94, 0.6);
+    border-width: 4px;
+  }
+}
+</style>

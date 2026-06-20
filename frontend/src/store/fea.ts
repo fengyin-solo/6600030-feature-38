@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, computed, nextTick } from 'vue';
 import type { FEAModel, FEAResult } from '../types';
 import {
   solve as feaSolve,
@@ -17,6 +17,48 @@ export const useFEAStore = defineStore('fea', () => {
   const deformationScale = ref(10);
   const selectedElement = ref<number | null>(null);
   const heatmapMode = ref<'stress' | 'strain' | 'force'>('stress');
+
+  // ─── Solve feedback state ────────────────────────────────────────────────
+  const isSolving = ref(false);
+  type SolveStage = 'idle' | 'assembling' | 'solving' | 'processing' | 'done';
+  const solveStage = ref<SolveStage>('idle');
+  const solveProgress = ref(0);
+
+  type NotificationType = 'info' | 'success' | 'error';
+  interface SolveNotification {
+    id: number;
+    message: string;
+    type: NotificationType;
+  }
+  const notification = ref<SolveNotification | null>(null);
+  let notificationSeq = 0;
+  let dismissTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function setNotification(
+    message: string,
+    type: NotificationType,
+    duration = 0
+  ) {
+    if (dismissTimer) {
+      clearTimeout(dismissTimer);
+      dismissTimer = null;
+    }
+    const id = ++notificationSeq;
+    notification.value = { id, message, type };
+    if (duration > 0) {
+      dismissTimer = setTimeout(() => {
+        if (notification.value?.id === id) {
+          notification.value = null;
+        }
+        dismissTimer = null;
+      }, duration);
+    }
+  }
+
+  function setSolveStage(stage: SolveStage, progress: number = 0) {
+    solveStage.value = stage;
+    solveProgress.value = progress;
+  }
 
   // ─── Actions ──────────────────────────────────────────────────────────────
   function loadPreset(name: string) {
@@ -38,8 +80,59 @@ export const useFEAStore = defineStore('fea', () => {
     }
   }
 
-  function solve() {
-    result.value = feaSolve(model.value);
+  async function solve() {
+    if (isSolving.value) return;
+    isSolving.value = true;
+    setSolveStage('assembling', 10);
+    setNotification('正在组装刚度矩阵…', 'info');
+
+    await nextTick();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const computeStart = performance.now();
+    try {
+      setSolveStage('assembling', 30);
+      await nextTick();
+      await new Promise((resolve) => setTimeout(resolve, 30));
+
+      setSolveStage('solving', 50);
+      setNotification('正在求解线性方程组…', 'info');
+      await nextTick();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      result.value = feaSolve(model.value);
+      const computeMs = performance.now() - computeStart;
+
+      setSolveStage('processing', 80);
+      setNotification('正在后处理计算结果…', 'info');
+      await nextTick();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      const minVisibleMs = 350;
+      const remaining = Math.max(0, minVisibleMs - computeMs);
+      if (remaining > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remaining));
+      }
+
+      setSolveStage('done', 100);
+      const stress = result.value
+        ? ` · 最大应力 ${(result.value.maxStress / 1e6).toFixed(2)} MPa`
+        : '';
+      setNotification(`求解完成 ✓ 用时 ${computeMs.toFixed(0)} ms${stress}`, 'success', 2800);
+
+      setTimeout(() => {
+        setSolveStage('idle', 0);
+      }, 500);
+    } catch (err) {
+      setSolveStage('idle', 0);
+      setNotification(
+        `求解失败：${err instanceof Error ? err.message : String(err)}`,
+        'error',
+        4000
+      );
+    } finally {
+      isSolving.value = false;
+    }
   }
 
   function toggleDeformed() {
@@ -118,6 +211,10 @@ export const useFEAStore = defineStore('fea', () => {
     deformationScale,
     selectedElement,
     heatmapMode,
+    isSolving,
+    solveStage,
+    solveProgress,
+    notification,
     maxStress,
     maxDisplacement,
     elementColors,
@@ -128,5 +225,7 @@ export const useFEAStore = defineStore('fea', () => {
     setHeatmapMode,
     addLoad,
     toggleFixed,
+    setSolveStage,
+    setNotification,
   };
 });

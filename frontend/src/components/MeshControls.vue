@@ -41,9 +41,31 @@ const store = useFEAStore();
     <!-- Solve button -->
     <button
       @click="store.solve()"
-      class="w-full py-2 rounded text-xs font-bold bg-green-700 text-white hover:bg-green-600 transition"
+      :disabled="store.isSolving"
+      class="w-full py-2 rounded text-xs font-bold transition flex items-center justify-center gap-2 relative overflow-hidden"
+      :class="store.isSolving
+        ? 'bg-slate-600 text-slate-300 cursor-not-allowed'
+        : store.solveStage === 'done'
+          ? 'bg-green-600 text-white'
+          : 'bg-green-700 text-white hover:bg-green-600'"
     >
-      ⚙ 求解 FEA
+      <span
+        v-if="store.isSolving"
+        class="inline-block w-3 h-3 border-2 border-slate-300 border-t-transparent rounded-full animate-spin"
+      ></span>
+      <span v-else-if="store.solveStage === 'done'">✓</span>
+      <span v-else>⚙</span>
+      <span>
+        {{ store.isSolving ? '求解中…' + (store.solveProgress > 0 ? ` ${store.solveProgress}%` : '') : 
+           store.solveStage === 'done' ? '求解完成' : '求解 FEA' }}
+      </span>
+
+      <!-- Progress bar inside button -->
+      <div
+        v-if="store.isSolving"
+        class="absolute bottom-0 left-0 h-0.5 bg-green-400/60 transition-all duration-300 ease-out"
+        :style="{ width: `${store.solveProgress}%` }"
+      ></div>
     </button>
 
     <!-- Deformed mesh toggle -->
